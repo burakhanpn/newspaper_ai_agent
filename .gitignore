@@ -1,0 +1,28 @@
+# ---- Gizli bilgiler (ASLA commit edilmemeli) ----
+.env
+.env.*
+!.env.example
+*.key
+*.pem
+
+# ---- Python ----
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+env/
+
+# ---- Calisma ciktilari ----
+gunluk_rapor.log
+*.log
+
+# ---- Editor / IDE ----
+.idea/
+.vscode/
+*.swp
+
+# ---- Isletim sistemi ----
+Thumbs.db
+desktop.ini
+.DS_Store
