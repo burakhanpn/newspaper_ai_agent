@@ -1,69 +1,69 @@
-import xml.etree.ElementTree as ET
+import json
+import re
 from datetime import datetime, timedelta, timezone
-from email.utils import parsedate_to_datetime
+from pathlib import Path
+from urllib.parse import urljoin, urlparse
 
 import requests
 from bs4 import BeautifulSoup
 
 HEADERS = {'User-Agent': 'Mozilla/5.0'}
 
-# RSS'te dc:subject alanı yazının türünü verir. Bunlar haber değil; kupon
-# sayfaları ve "en iyi X" alışveriş rehberleri her ay yeniden yayınlandığı için
-# tarihleri hep taze görünür ve listeyi doldurur.
-# Not: Bu liste WIRED'ın dc:subject taksonomisine göre ayarlanmıştı. Kaynak
-# The Verge'e değiştirildi; dc:subject alanı boş/farklı gelirse bu filtre
-# hiçbir şeyi elemez — devre dışı kalması zararsızdır, çünkü Ajan 1
-# (baslik_okuyucu_ajani) haber olmayan öğeleri zaten editoryal olarak eler.
-HABER_OLMAYAN_TURLER = {"Coupons", "Buying Guide", "Product Review"}
+# Makale linklerini menü, etiket ve bölüm linklerinden ayırmak için.
+# Ya yolda 4+ haneli bir kimlik vardır (/news/799431/...), ya da yolun sonunda
+# en az üç tireli uzun bir slug bulunur (.../yeni-model-duyuruldu-bugun).
+MAKALE_DESENI = re.compile(r"/\d{4,}/|[a-z0-9]+(?:-[a-z0-9]+){2,}/?$")
 
-_DC = "{http://purl.org/dc/elements/1.1/}"
+# Ana sayfada haber olmayan bölümler. Ajan 1 zaten editoryal eleme yapıyor;
+# burada sadece belirgin olanları ucuza eliyoruz.
+DISLANAN_YOLLAR = ("/deals", "/coupons", "/store", "/podcast", "/video",
+                   "/newsletter", "/about", "/author", "/tag", "/pages",
+                   "/category", "/events")
+
+# Aynı haberin günlerce tekrar raporlanmasını önleyen kalıcı kayıt.
+GECMIS_DOSYASI = "gorulen_haberler.json"
+GECMIS_GUN = 30
 
 
-def haber_adaylarini_getir(rss_url: str, max_saat: int = 48, limit: int = 15) -> list[dict]:
-    """RSS akışından (baslik, link, tarih) aday üçlülerini toplar.
+def haber_adaylarini_getir(anasayfa_url: str, limit: int = 25) -> list[dict]:
+    """Ana sayfadaki makale linklerini SAYFADAKİ SIRAYLA toplar.
 
-    Ana sayfa scraping'i yerine RSS kullanılıyor: ana sayfa editoryal olarak
-    dizilidir ve HTML'inde tarih yoktur, bu yüzden haberlerin güncel olduğu
-    garanti edilemiyordu. RSS ise yeniden eskiye sıralı gelir ve her öğede
-    pubDate bulunur.
+    RSS'ten farkı: sıra kronolojik değil editoryaldir — sayfanın en üstündeki
+    haber, sitenin o an en önemli gördüğü haberdir. Ana sayfa HTML'inde yayın
+    tarihi bulunmadığı için tarih burada okunmaz; makale sayfasından alınır
+    (bkz. haber_icerigini_getir).
 
-    `max_saat`: bundan eski yazılar tamamen elenir.
     Menü/reklam ayıklamasını Ajan 1 (LLM) yapacağı için bilerek fazla aday bırakılır.
     """
-    response = requests.get(rss_url, headers=HEADERS, timeout=10)
+    response = requests.get(anasayfa_url, headers=HEADERS, timeout=10)
     response.raise_for_status()
-    kok = ET.fromstring(response.content)
+    soup = BeautifulSoup(response.text, 'html.parser')
 
-    sinir = datetime.now(timezone.utc) - timedelta(hours=max_saat)
-    adaylar = []
+    taban_alan = urlparse(anasayfa_url).netloc
+    adaylar, gorulen = [], set()
 
-    for oge in kok.iter('item'):
-        baslik = (oge.findtext('title') or "").strip()
-        link = (oge.findtext('link') or "").strip()
-        ham_tarih = oge.findtext('pubDate')
-        if not baslik or not link or not ham_tarih:
+    for baglanti in soup.find_all('a', href=True):
+        baslik = baglanti.get_text(strip=True)
+        # Kısa metinler menü, etiket ya da "Devamı" tipi linklerdir.
+        if len(baslik) < 25:
             continue
 
-        if (oge.findtext(_DC + 'subject') or "").strip() in HABER_OLMAYAN_TURLER:
+        link = urljoin(anasayfa_url, baglanti['href']).split('#')[0]
+        parcali = urlparse(link)
+
+        if parcali.netloc != taban_alan:
+            continue
+        if any(parcali.path.startswith(y) for y in DISLANAN_YOLLAR):
+            continue
+        if not MAKALE_DESENI.search(parcali.path):
+            continue
+        # Aynı haber sayfada birden fazla yerde görünebilir; ilk görüldüğü
+        # sıra korunur, çünkü editoryal önem sırasını temsil eder.
+        if link in gorulen:
             continue
 
-        try:
-            yayin = parsedate_to_datetime(ham_tarih)
-        except (TypeError, ValueError):
-            continue
-        if yayin.tzinfo is None:
-            yayin = yayin.replace(tzinfo=timezone.utc)
-
-        # RSS yeniden eskiye sıralı: ilk eski öğede durabiliriz.
-        if yayin < sinir:
-            break
-
-        adaylar.append({
-            "baslik": baslik,
-            "link": link,
-            "tarih": yayin.astimezone().strftime("%d.%m.%Y %H:%M"),
-            "_yayin": yayin,
-        })
+        gorulen.add(link)
+        adaylar.append({"baslik": baslik, "link": link})
 
         if len(adaylar) >= limit:
             break
@@ -71,15 +71,54 @@ def haber_adaylarini_getir(rss_url: str, max_saat: int = 48, limit: int = 15) ->
     return adaylar
 
 
-def haber_icerigini_getir(link: str) -> str:
-    """Tek bir makalenin gövde metnini çeker. Genel yöntem: <article>/<main> içindeki
-    (yoksa tüm sayfadaki) anlamlı paragrafları birleştirir. Token tasarrufu için kırpar."""
+def _yayin_tarihi_bul(soup):
+    """Makale sayfasından yayın tarihini datetime olarak çıkarır.
+
+    Bulunamazsa None döner; bu normaldir ve hata sayılmaz, sadece rapora
+    tarih yazılmaz. Biçimlendirilmiş metin yerine ham datetime döndürmesi
+    önemli: "dd.mm.yyyy" metni ay/yıl sınırında yanlış sıralanır.
+    """
+    # 1) Standart Open Graph / article meta etiketi — en güvenilir kaynak.
+    meta = (soup.find('meta', attrs={'property': 'article:published_time'})
+            or soup.find('meta', attrs={'name': 'article:published_time'}))
+    ham = meta.get('content') if meta else None
+
+    # 2) Yedek: <time datetime="..."> etiketi.
+    if not ham:
+        etiket = soup.find('time', attrs={'datetime': True})
+        ham = etiket['datetime'] if etiket else None
+
+    if not ham:
+        return None
+
+    try:
+        # Python 3.10 ISO ayrıştırıcısı 'Z' son ekini anlamaz; +00:00'a çeviriyoruz.
+        tarih = datetime.fromisoformat(ham.strip().replace('Z', '+00:00'))
+    except (TypeError, ValueError):
+        return None
+
+    if tarih.tzinfo is None:
+        tarih = tarih.replace(tzinfo=timezone.utc)
+    return tarih
+
+
+def haber_icerigini_getir(link: str) -> dict:
+    """Makalenin gövde metnini ve yayın tarihini TEK istekte çeker.
+
+    Döner: {"icerik": str, "tarih": str, "_yayin": datetime | None}
+    `tarih` rapora yazılacak metin (bulunamazsa ""), `_yayin` ise sıralama
+    için ham datetime'dır. Alt çizgi, bu alanın ajanlara gönderilmeyeceğini
+    (JSON'a serileştirilemez) belirtir.
+    """
     try:
         response = requests.get(link, headers=HEADERS, timeout=10)
         response.raise_for_status()
         soup = BeautifulSoup(response.text, 'html.parser')
 
-        # Gövde dışı gürültüyü temizle.
+        # Tarih, temizlikten ÖNCE okunmalı: meta etiketleri <head> içinde ve
+        # decompose() sonrası erişilemez hale gelirler.
+        yayin = _yayin_tarihi_bul(soup)
+
         for etiket in soup(['script', 'style', 'nav', 'header', 'footer', 'aside']):
             etiket.decompose()
 
@@ -87,10 +126,57 @@ def haber_icerigini_getir(link: str) -> str:
         paragraflar = [p.get_text(strip=True) for p in govde.find_all('p')]
         metin = "\n".join(p for p in paragraflar if len(p) > 40)
 
-        if not metin:
-            return "[İçerik alınamadı — sayfa yapısı tanınamadı]"
-
-        # İlk ~4000 karakter sınıflandırma için genelde yeterli.
-        return metin[:4000]
+        return {
+            # İlk ~4000 karakter sınıflandırma için genelde yeterli.
+            "icerik": metin[:4000] or "[İçerik alınamadı — sayfa yapısı tanınamadı]",
+            "tarih": yayin.astimezone().strftime("%d.%m.%Y %H:%M") if yayin else "",
+            "_yayin": yayin,
+        }
     except Exception as e:
-        return f"[İçerik çekilemedi: {e}]"
+        return {"icerik": f"[İçerik çekilemedi: {e}]", "tarih": "", "_yayin": None}
+
+
+# ============================================================
+# Tekrar kontrolü — daha önce raporlanmış haberleri hatırlar
+# ============================================================
+def gecmisi_yukle(dosya: str = GECMIS_DOSYASI) -> dict:
+    """Daha önce raporlanmış {link: ilk_raporlama_zamani} kaydını okur.
+
+    GECMIS_GUN'den eski kayıtlar atılır; dosya süresiz büyümesin ve çok eski
+    bir haber tekrar ana sayfaya düşerse yeniden raporlanabilsin diye.
+    Dosya yoksa veya bozuksa boş sözlük döner (tekrar kontrolü devre dışı kalır,
+    program durmaz).
+    """
+    yol = Path(dosya)
+    if not yol.exists():
+        return {}
+    try:
+        veri = json.loads(yol.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError):
+        return {}
+    if not isinstance(veri, dict):
+        return {}
+
+    sinir = datetime.now(timezone.utc) - timedelta(days=GECMIS_GUN)
+    temiz = {}
+    for link, zaman in veri.items():
+        try:
+            if datetime.fromisoformat(zaman) >= sinir:
+                temiz[link] = zaman
+        except (TypeError, ValueError):
+            continue
+    return temiz
+
+
+def gecmise_ekle(linkler: list[str], gecmis: dict, dosya: str = GECMIS_DOSYASI) -> None:
+    """Raporlanan linkleri geçmişe yazar. Zaten varsa ilk tarihi korur."""
+    simdi = datetime.now(timezone.utc).isoformat()
+    for link in linkler:
+        gecmis.setdefault(link, simdi)
+    try:
+        Path(dosya).write_text(
+            json.dumps(gecmis, ensure_ascii=False, indent=2), encoding="utf-8"
+        )
+    except OSError as e:
+        # Geçmiş yazılamazsa rapor yine de geçerlidir; sadece uyarıyoruz.
+        print(f"UYARI: geçmiş dosyası yazılamadı ({e}). Tekrar kontrolü bu tur atlandı.")

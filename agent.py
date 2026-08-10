@@ -46,9 +46,8 @@ _BASLIK_SEMASI = {
                 "properties": {
                     "baslik": {"type": "string"},
                     "link": {"type": "string"},
-                    "tarih": {"type": "string"},
                 },
-                "required": ["baslik", "link", "tarih"],
+                "required": ["baslik", "link"],
                 "additionalProperties": False,
             },
         }
@@ -59,20 +58,21 @@ _BASLIK_SEMASI = {
 
 
 def baslik_okuyucu_ajani(adaylar: list[dict], adet: int = 5) -> list[dict]:
-    """Ham başlık+link+tarih adayları arasından GERÇEK haberleri seçip ilk `adet` tanesini
-    döndürür. Adaylar yeniden eskiye sıralı gelir."""
+    """Ham başlık+link adayları arasından GERÇEK haberleri seçip ilk `adet` tanesini
+    döndürür. Adaylar ana sayfadaki editoryal sırayla gelir."""
     system = (
-        "Sen bir haber editörüsün. Sana bir haber sitesinin RSS akışından toplanmış "
-        "başlık, link ve yayın tarihi üçlüleri verilecek. Liste YENİDEN ESKİYE sıralıdır. "
+        "Sen bir haber editörüsün. Sana bir haber sitesinin ANA SAYFASINDAN toplanmış "
+        "başlık ve link ikilileri verilecek. Liste, haberlerin sayfada göründüğü "
+        "EDİTORYAL SIRAYLA gelir: en üstteki, sitenin o an en önemli gördüğü haberdir. "
         "Aralarından yalnızca GERÇEK haberleri seç; alışveriş rehberi ('en iyi X'), ürün "
-        "incelemesi, kupon/indirim sayfası, reklam gibi haber olmayan öğeleri ele. "
-        f"Eleme sonrası kalanların EN YENİ {adet} tanesini, yani listede en üstte kalanları, "
-        "verilen link ve tarihleriyle birlikte döndür. Konu ilgi çekiciliğine göre değil, "
-        "SADECE tarihe göre sırala — daha eski bir haberi konusu daha ilginç diye öne alma. "
-        "Link ve tarihleri aynen koru, değiştirme."
+        "incelemesi, kupon/indirim sayfası, canlı blog, podcast, video ve reklam gibi "
+        f"haber olmayan öğeleri ele. Eleme sonrası kalanların İLK {adet} tanesini, yani "
+        "listede en üstte kalanları, verilen linkleriyle birlikte döndür. Sırayı konu "
+        "ilgi çekiciliğine göre DEĞİŞTİRME — sayfadaki sırayı aynen koru. "
+        "Linkleri aynen koru, değiştirme."
     )
     aday_metni = "\n".join(
-        f"- [{a['tarih']}] {a['baslik']} | {a['link']}" for a in adaylar
+        f"- {a['baslik']} | {a['link']}" for a in adaylar
     )
     sonuc = _yapilandirilmis_cagri(system, f"Adaylar:\n{aday_metni}", _BASLIK_SEMASI)
     return sonuc["haberler"][:adet]
@@ -113,7 +113,8 @@ def rapor_hazirlayici_ajani(siniflandirmalar: list[dict]) -> str:
         "Sen çok yetenekli bir editörsün. Sana analiz edilmiş haberlerin listesi (başlık, link, "
         "yayın tarihi, yapay zeka ile ilgili mi, gerekçe) verilecek. Kısa, akıcı ve düzenli bir "
         "Türkçe rapor yaz: önce yapay zeka ile ilgili haberleri öne çıkar, sonra kısa bir genel "
-        "değerlendirme ekle. Her haberin yayın tarihini de belirt. Markdown kullanabilirsin."
+        "değerlendirme ekle. Haberin yayın tarihi doluysa belirt; 'tarih' alanı BOŞ ise tarihe "
+        "hiç değinme ve 'tarih bilinmiyor' gibi bir ifade de kullanma. Markdown kullanabilirsin."
     )
     veri = json.dumps(siniflandirmalar, ensure_ascii=False, indent=2)
     response = _get_client().messages.create(

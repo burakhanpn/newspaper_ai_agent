@@ -16,6 +16,10 @@ env/
 # ---- Calisma ciktilari ----
 gunluk_rapor.log
 *.log
+gorulen_haberler.json
+
+# Gecici commit mesaji dosyasi (repoya girmesin)
+COMMIT_MSG.txt
 
 # ---- Editor / IDE ----
 .idea/
