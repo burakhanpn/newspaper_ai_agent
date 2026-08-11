@@ -142,6 +142,58 @@ def haber_icerigini_getir(link: str) -> dict:
 # Markdown link biçimi: [metin](https://...)
 MD_LINK_DESENI = re.compile(r"\[[^\]]*\]\((https?://[^\s)]+)\)")
 
+# Ajan 3'ün haber raporu yerine BAŞKA BİR ŞEY üretmesini yakalayan kalıplar.
+#
+# Gerçek bir vaka: Ajan 2'nin sınıflandırma promptu yanlışlıkla Ajan 3'e
+# yapıştırıldığında, Ajan 3 haber raporu değil sınıflandırmaların DENETİMİNİ
+# yazdı ("Etiket doğru", "EVET — Madde 1"). Çıktı biçimsel olarak kusursuzdu:
+# taze tarihli, düzgün linkli, hatasız çalışan bir belge — ama yanlış belge.
+# Mevcut denetimlerin hiçbiri yakalayamadı, çünkü hepsi "çalıştı mı" sorusunu
+# sorar, "doğru şeyi mi yaptı" sorusunu değil.
+#
+# Kalıplar bilerek dar tutuldu: haber metninde doğal olarak geçebilecek
+# ifadeler (örneğin bir yasa haberinde "madde 4") tek başına tetiklemesin diye
+# EVET/HAYIR bağlamına demirlendi ve eşik iki AYRI sinyale ayarlandı.
+_META_DESENLERI = [
+    (re.compile(r"\b(EVET|HAYIR)\s*[-–—:]\s*\d"), "EVET-N / HAYIR-N atfı"),
+    (re.compile(r"\b(EVET|HAYIR)\s*[-–—:]?\s*Madde", re.I), "madde numarasına atıf"),
+    (re.compile(r"\betiket(i|ler|leri)?\s+(doğru|yanlış|hatalı)", re.I), "etiket yargısı"),
+    (re.compile(r"sınıflandırma\w*\s+(\w+\s+)?(doğru|yanlış|hatalı)", re.I),
+     "sınıflandırma değerlendirmesi"),
+    (re.compile(r"(\b(EVET|HAYIR)\b.*){3,}", re.S), "tekrarlayan EVET/HAYIR hükmü"),
+]
+
+# Bunun altındaki bir çıktı rapor olamayacak kadar kısadır.
+_ASGARI_UZUNLUK = 200
+
+
+def raporu_bicim_dogrula(rapor: str, sonuclar: list[dict]) -> list[str]:
+    """Ajan 3 gerçekten bir HABER RAPORU mu yazdı?
+
+    Bulunan sorunların listesini döndürür; liste boşsa rapor beklenen türdendir.
+    Bu denetim, raporu_linkleriyle_dogrula()'dan ÖNCE çalıştırılmalıdır: o
+    fonksiyon eksik linkleri tamamlayarak "ajan hiç link yazmamış" sinyalini
+    siler.
+    """
+    sorunlar = []
+
+    bulunan = {aciklama for desen, aciklama in _META_DESENLERI if desen.search(rapor)}
+    if len(bulunan) >= 2:
+        sorunlar.append(
+            "rapor, haber metni yerine sınıflandırma denetimi gibi görünüyor "
+            f"({', '.join(sorted(bulunan))})"
+        )
+
+    # Ajan tek bir geçerli link bile yazmadıysa rapor yazmamış demektir.
+    gecerli = {s["link"] for s in sonuclar}
+    if gecerli and not (set(MD_LINK_DESENI.findall(rapor)) & gecerli):
+        sorunlar.append(f"raporda hiç geçerli haber linki yok ({len(gecerli)} bekleniyordu)")
+
+    if len(rapor.strip()) < _ASGARI_UZUNLUK:
+        sorunlar.append(f"rapor aşırı kısa ({len(rapor.strip())} karakter)")
+
+    return sorunlar
+
 
 def raporu_linkleriyle_dogrula(rapor: str, sonuclar: list[dict]) -> tuple[str, list[str]]:
     """Ajan 3'ün yazdığı rapordaki linkleri gerçek haber linkleriyle karşılaştırır.

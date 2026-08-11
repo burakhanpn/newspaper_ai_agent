@@ -16,6 +16,7 @@ for _akis in (sys.stdout, sys.stderr):
 from tools import (
     haber_adaylarini_getir,
     haber_icerigini_getir,
+    raporu_bicim_dogrula,
     raporu_linkleriyle_dogrula,
     gecmisi_yukle,
     gecmise_ekle,
@@ -169,6 +170,24 @@ def main():
     # 3. Ajan 3 — nihai raporu yaz
     print("\n[5/5] Rapor Hazırlayıcı Ajanı raporu yazıyor...\n")
     rapor = rapor_hazirlayici_ajani(sonuclar)
+
+    # Ajan 3 gerçekten HABER RAPORU mu yazdı? Bu denetim link tamamlamasından
+    # ÖNCE gelmeli: raporu_linkleriyle_dogrula() eksik linkleri ekleyerek
+    # "ajan hiç link yazmamış" sinyalini siler.
+    #
+    # Buradaki başarısızlık ölümcüldür: bozuk bir raporu göndermek,
+    # hiç göndermemekten kötüdür. rapor.md'ye yazmıyoruz da; böylece dünkü
+    # geçerli rapor korunur ve send_report.py tazelik kontrolüne takılır.
+    bicim_sorunlari = raporu_bicim_dogrula(rapor, sonuclar)
+    if bicim_sorunlari:
+        print("HATA: Rapor Hazırlayıcı Ajanı beklenen biçimde bir haber raporu üretmedi.")
+        for sorun in bicim_sorunlari:
+            print(f"       - {sorun}")
+        print("       Muhtemel sebep: agent.py içindeki Ajan 3 promptu bozulmuş olabilir.")
+        print("       Rapor kaydedilmedi, e-posta gönderilmeyecek.")
+        print("       --- Ajanın ürettiği metnin başı ---")
+        print("       " + rapor.strip()[:400].replace("\n", "\n       "))
+        sys.exit(CIKIS_HATA)
 
     # Ajanın yazdığı linkleri gerçek haber linkleriyle doğrula. Eksik kalan
     # haberler rapora "Kaynaklar" bölümü olarak eklenir.

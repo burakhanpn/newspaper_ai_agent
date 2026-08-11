@@ -106,11 +106,43 @@ _ICERIK_SEMASI = {
 
 
 def icerik_inceleyici_ajani(baslik: str, icerik: str) -> dict:
-    """Bir makalenin içeriğine bakarak yapay zeka ile ilgili olup olmadığını döndürür."""
+    """Bir makalenin içeriğine bakarak yapay zeka ile ilgili olup olmadığını döndürür.
+
+    Sınır, modelin her seferinde yeniden yorumlamasına bırakılmaz: EVET ve HAYIR
+    maddeleri tek tek sayılır. Kararsız kalınan durumda HAYIR'a düşer, böylece
+    "AI" etiketi bilgi taşımaya devam eder.
+    """
     system = (
-        "Sen çok yetenekli bir teknoloji analistisin. Sana bir haberin başlığı ve gövde metni "
-        "verilecek. Bu haberin bir YAPAY ZEKA HABERİ olup olmadığına karar ver.\n\n" 
-        "haberin merkezinde olmalı. Gerekçeni kısa ve Türkçe yaz."
+        "Sen çok yetenekli bir teknoloji analistisin. Sana bir haberin başlığı ve "
+        "gövde metni verilecek. Bu haberin bir YAPAY ZEKA HABERİ olup olmadığına "
+        "karar ver.\n\n"
+
+        "EVET say (aşağıdakilerden birine oturuyorsa):\n"
+        "1. Yapay zeka teknolojisinin kendisi: modeller, yetenekler, araştırma, "
+        "kıyaslama sonuçları, güvenlik ve hizalama.\n"
+        "2. Yapay zeka ürün ve uygulamaları: bir ürünün AI özelliği haberin konusuysa.\n"
+        "3. Ana işi yapay zeka olan şirketlerin SERMAYE olayları: yatırım turu, "
+        "satın alma, halka arz, değerleme, hisse işlemleri. Bu tür haberler "
+        "sektöre akan sermayenin ölçüsünü verdiği için AI haberidir.\n"
+        "4. Yapay zekaya ÖZGÜ hukuk ve düzenleme: AI yasaları, telif davaları, "
+        "AI standartları veya AI ürünleri üzerine açılan davalar.\n"
+        "5. Yapay zeka için kritik donanım ve altyapı: eğitim çipleri, veri merkezi "
+        "kapasitesi, enerji — haber bunları AI talebiyle ilişkilendiriyorsa.\n\n"
+
+        "HAYIR say:\n"
+        "1. Yapay zeka yalnızca yan cümlede, arka planda ya da pazarlama etiketi "
+        "olarak geçiyorsa.\n"
+        "2. Şirketin AI şirketi olması TEK BAŞINA yeterli değildir. Haberin konusu "
+        "o şirketin yapay zekayla ilgisi olmayan sıradan kurumsal meselesiyse "
+        "(yönetim değişikliği, ofis, marka anlaşmazlığı, İK) HAYIR.\n"
+        "3. Genel teknoloji ve tüketici haberleri: uygulama mağazaları, ödeme "
+        "yöntemleri, telefon donanımı, platform politikaları.\n"
+        "4. Kişilerin şirketten bağımsız faaliyetleri (siyasi bağış, kişisel yatırım).\n\n"
+
+        "Yukarıdaki maddelerin hiçbirine NET oturmuyorsa HAYIR döndür.\n\n"
+
+        "Gerekçeni kısa ve Türkçe yaz ve hangi maddeye dayandığını belirt "
+        "(örnek: 'EVET-3: ana işi AI olan şirketin sermaye işlemi')."
     )
     kullanici = f"BAŞLIK: {baslik}\n\nİÇERİK:\n{icerik}"
     return _yapilandirilmis_cagri(system, kullanici, _ICERIK_SEMASI, max_tokens=1024, model=MODEL_UCUZ)
@@ -122,10 +154,18 @@ def icerik_inceleyici_ajani(baslik: str, icerik: str) -> dict:
 def rapor_hazirlayici_ajani(siniflandirmalar: list[dict]) -> str:
     """Tüm sınıflandırma sonuçlarını akıcı bir Türkçe rapora dönüştürür (düz metin/Markdown)."""
     system = (
-        "Sen çok yetenekli bir editörsün. Sana analiz edilmiş haberlerin listesi (başlık, link, "
-        "yayın tarihi, yapay zeka ile ilgili mi, gerekçe) verilecek. Kısa, akıcı ve düzenli bir "
-        "Türkçe rapor yaz: önce yapay zeka ile ilgili haberleri öne çıkar, sonra kısa bir genel "
+        "Sen çok yetenekli bir editörsün. Sana analiz edilmiş haberlerin listesi "
+        "(başlık, link, yayın tarihi, yapay zeka ile ilgili mi, gerekçe) verilecek. "
+        "Kısa, akıcı ve düzenli bir Türkçe HABER RAPORU yaz: önce yapay zeka ile "
+        "ilgili haberleri öne çıkar, sonra diğerlerini ver, en sonunda kısa bir genel "
         "değerlendirme ekle. Markdown kullan.\n\n"
+
+        "Sana verilen 'ai_ile_ilgili' ve 'gerekçe' alanları KARAR VERİLMİŞ girdilerdir. "
+        "Onları sorgulama, doğrulama, denetleme; sınıflandırmanın doğru olup olmadığını "
+        "TARTIŞMA. Senin işin haberleri okura anlatmak, etiketleri değerlendirmek değil. "
+        "'Etiket doğru', 'madde 3 gereği' gibi ifadeler kullanma — bunlar iç mekanizma, "
+        "okuru ilgilendirmez.\n\n"
+
         "KURALLAR:\n"
         "1. HER haberin sonuna kaynak linkini Markdown biçiminde ekle: "
         "[Habere git](LINK)\n"
