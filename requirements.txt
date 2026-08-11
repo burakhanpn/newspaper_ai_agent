@@ -1,4 +1,6 @@
-anthropic
-beautifulsoup4
-requests
-python-dotenv
+# Asgari surumler, projenin gelistirildigi ve test edildigi ortamdan alindi.
+# Kesin tekrarlanabilirlik isterseniz >= yerine == kullanin.
+anthropic>=0.120.2
+beautifulsoup4>=4.15.0
+requests>=2.34.2
+python-dotenv>=1.2.2

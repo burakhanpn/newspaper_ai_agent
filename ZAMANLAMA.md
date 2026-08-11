@@ -27,11 +27,15 @@ bulut/sandbox ortamlarında zamanlanamıyor; Windows Task Scheduler ile
 
 ### Yöntem A — Otomatik (önerilen)
 
-Klasördeki `gorevi_kur.ps1` dosyası görevi tek adımda kurar. PowerShell açıp:
+Klasördeki `gorevi_kur.ps1` dosyası görevi tek adımda kurar. PowerShell'i
+**proje klasöründe** açıp:
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File ".\gorevi_kur.ps1"
+powershell -ExecutionPolicy Bypass -File .\gorevi_kur.ps1
 ```
+
+Script kendi bulunduğu dizini kullanır (`$PSScriptRoot`), bu yüzden klasör
+yolunu hiçbir yere yazmanız gerekmez.
 
 Yönetici yetkisi gerekmez. Script; günlük 09:00 tetikleyicisini, pil ayarlarını,
 kaçırılan çalıştırmaların telafisini ve hata durumunda 2 kez yeniden deneme

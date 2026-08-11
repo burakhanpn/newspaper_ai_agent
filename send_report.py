@@ -5,7 +5,7 @@ Gmail SMTP kullanir. Kullanmadan once .env dosyasina sunlari ekleyin:
 
     GMAIL_ADDRESS=sizin_adresiniz@gmail.com
     GMAIL_APP_PASSWORD=xxxx xxxx xxxx xxxx   # normal sifre DEGIL, Uygulama Sifresi
-    RAPOR_ALICI=alici@ornek.com          # opsiyonel, bos birakilirsa GMAIL_ADDRESS'e gonderilir
+    RAPOR_ALICI=alici@ornek.com              # opsiyonel, bos birakilirsa GMAIL_ADDRESS'e gonderilir
 
 Uygulama Sifresi almak icin: https://myaccount.google.com/apppasswords
 (Google hesabinizda 2 adimli dogrulama acik olmali.)
