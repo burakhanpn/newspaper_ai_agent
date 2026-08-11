@@ -1,6 +1,6 @@
 # AI Haber Ajanı
 
-Bu proje, Claude API üzerine kurulmuş çok-ajanlı basit bir haber analiz aracıdır. TechCrunch'ın **ana sayfasındaki ilk 5 haberi** alır, bu haberlerin 'yapay zeka' ile ilgili olup olmadığını analiz eder ve sonucu `rapor.md` dosyasına yazar.
+Bu proje, Claude API üzerine kurulmuş çok-ajanlı basit bir haber analiz aracıdır. TechCrunch'ın ana sayfasından **en son yayınlanmış 5 haberi** alır, bu haberlerin 'yapay zeka' ile ilgili olup olmadığını analiz eder ve sonucu `rapor.md` dosyasına yazar.
 
 Kaynak ve haber adedi `main.py` içindeki `HEDEF_URL` ve `HABER_ADEDI` değerlerinden ayarlanır.
 
@@ -8,21 +8,29 @@ Kaynak ve haber adedi `main.py` içindeki `HEDEF_URL` ve `HABER_ADEDI` değerler
 
 | Aşama | Ne yapar |
 |---|---|
-| Aday toplama | Ana sayfadaki makale linklerini **editoryal sırayla** çeker (`tools.py`) |
-| Tekrar kontrolü | Daha önce raporlanmış linkleri eler (`gorulen_haberler.json`) |
-| Ajan 1 | Gerçek haberleri seçer; rehber, inceleme, podcast, reklam gibi öğeleri eler |
-| Ajan 2 | Her haberin gövdesini paralel olarak indirip AI ile ilgili mi diye sınıflandırır |
-| Ajan 3 | Sonuçları akıcı bir Türkçe rapora dönüştürür |
+| Aday toplama | Ana sayfadaki makale linklerini çeker (`tools.py`) |
+| Ajan 1 | Haber olmayanları eler (rehber, inceleme, podcast, reklam); geriye `ADAY_HAVUZU` kadar aday bırakır |
+| Tarih sıralaması | Havuzdaki **her adayın** sayfası paralel indirilir, yayın tarihine göre sıralanır, en yeni `HABER_ADEDI` tanesi seçilir |
+| Ajan 2 | Seçilen haberleri paralel olarak AI ile ilgili mi diye sınıflandırır |
+| Ajan 3 | Sonuçları akıcı bir Türkçe rapora dönüştürür, her habere kaynak linkini ekler |
 
-### Sıralama ve tarih hakkında
+### Neden iki aşamalı seçim var?
 
-Ana sayfa **kronolojik değil editoryal** olarak dizilidir: en üstteki haber, sitenin o an en önemli gördüğü haberdir. Bu yüzden "son X saat" gibi bir tazelik penceresi yoktur.
+Ana sayfa **kronolojik değil editoryal** olarak dizilidir: öne çıkarılan, günler öncesine ait bir haber listenin en üstünde durabilir. Bu yüzden sayfa sırası "en yeni" için güvenilir bir ölçüt değildir.
 
-Yayın tarihi ana sayfa HTML'inde bulunmaz; makale sayfasının `article:published_time` meta etiketinden okunur. Bu zaten içerik için indirilen sayfadır, yani ek ağ maliyeti yoktur. Tarih bulunamazsa alan boş kalır ve rapora tarih yazılmaz — bu bir hata değildir.
+Yayın tarihi ana sayfa HTML'inde de bulunmaz; yalnızca makale sayfasının `article:published_time` meta etiketinde vardır. Dolayısıyla tarihe göre seçim yapabilmek için önce havuzdaki adayların sayfalarına bakmak, sonra seçmek gerekiyor. Ajan 1 bu yüzden sıralama yapmaz — sadece haber olmayanları eler.
 
-### Tekrar kontrolü
+`ADAY_HAVUZU` bu maliyetin ayarıdır: havuz ne kadar genişse tarih sıralaması o kadar isabetli olur, karşılığında o kadar çok sayfa indirilir. Pahalı olan LLM çağrıları yalnızca sıralamayı kazanan haberler için yapılır.
 
-Raporlanan her link `gorulen_haberler.json` dosyasına kaydedilir ve 30 gün boyunca tekrar seçilmez. Böylece ana sayfa günlerce güncellenmese bile aynı haberler tekrar tekrar rapora girmez. Dosya `.gitignore` ile hariç tutulmuştur; silinirse tekrar kontrolü sıfırlanır, program yine çalışır.
+Tarihi okunamayan adaylar sıralamada en sona alınır; tarihi bilinmeyen bir haberin "en yeni" olduğu iddia edilemez. Havuz yetersiz kalırsa yine de listeye girebilirler ve rapora tarihsiz yazılırlar — bu bir hata değildir.
+
+### Geçmiş kaydı (`gorulen_haberler.json`)
+
+Raporlanan linkler bu dosyaya kaydedilir ve 30 gün tutulur. **Bu kayıt filtreleme için kullanılmaz** — yalnızca hangi haberin ne zaman ilk kez raporlandığını izlemek içindir.
+
+Eskiden bu liste bir tekrar filtresiydi: geçmişte olan linkler havuzdan elenirdi. Ancak bu, aynı gün ikinci kez çalıştırıldığında günün taze haberlerini "zaten görüldü" diye eleyip programı sayfanın derinlerindeki eski haberlere itiyordu — yani ikinci çalışma, birincinin ürettiği iyi raporun üzerine daha kötüsünü yazıyordu. Filtre bu yüzden kaldırıldı; artık her çalışma o anki en yeni haberleri raporlar.
+
+Dosya `.gitignore` ile hariç tutulmuştur; silinirse yalnızca arşiv sıfırlanır, program davranışı değişmez.
 
 ## Kurulum Adımları
 

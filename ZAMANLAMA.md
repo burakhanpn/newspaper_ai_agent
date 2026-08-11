@@ -25,6 +25,26 @@ bulut/sandbox ortamlarında zamanlanamıyor; Windows Task Scheduler ile
 
 ## 2. Task Scheduler görevini oluşturun
 
+### Yöntem A — Otomatik (önerilen)
+
+Klasördeki `gorevi_kur.ps1` dosyası görevi tek adımda kurar. PowerShell açıp:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File ".\gorevi_kur.ps1"
+```
+
+Yönetici yetkisi gerekmez. Script; günlük 09:00 tetikleyicisini, pil ayarlarını,
+kaçırılan çalıştırmaların telafisini ve hata durumunda 2 kez yeniden deneme
+ayarını birlikte kurar. Aynı isimde eski bir görev varsa günceller.
+
+Kurulum sonrası test:
+
+```powershell
+Start-ScheduledTask -TaskName "AI Haber Raporu"
+```
+
+### Yöntem B — Elle (GUI)
+
 1. Başlat menüsünden **Görev Zamanlayıcı (Task Scheduler)**'ı açın.
 2. Sağ panelden **Temel Görev Oluştur...** (Create Basic Task) seçin.
 3. Ad: `AI Haber Raporu`, isterseniz açıklama ekleyin → İleri.

@@ -17,6 +17,8 @@ env/
 gunluk_rapor.log
 *.log
 gorulen_haberler.json
+# Her calismada yeniden uretilir; repoda tutulmasi her gun gurultulu diff yaratir.
+rapor.md
 
 # Gecici commit mesaji dosyasi (repoya girmesin)
 COMMIT_MSG.txt

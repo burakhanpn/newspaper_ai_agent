@@ -1,7 +1,7 @@
 import json
 import anthropic
 
-MODEL = "claude-opus-4-8"
+MODEL = "claude-opus-5"
 # Yüksek hacimli (her haber için 1 kez çağrılan) içerik sınıflandırması için
 # daha ucuz ve hızlı bir model. Structured Outputs'u destekler.
 MODEL_UCUZ = "claude-haiku-4-5"
@@ -57,18 +57,31 @@ _BASLIK_SEMASI = {
 }
 
 
-def baslik_okuyucu_ajani(adaylar: list[dict], adet: int = 5) -> list[dict]:
-    """Ham başlık+link adayları arasından GERÇEK haberleri seçip ilk `adet` tanesini
-    döndürür. Adaylar ana sayfadaki editoryal sırayla gelir."""
+def baslik_okuyucu_ajani(adaylar: list[dict], adet: int = 12) -> list[dict]:
+    """Ham başlık+link adayları arasından GERÇEK haberleri ayıklar.
+
+    Bu ajan artık SIRALAMA YAPMAZ, sadece FİLTRELER. Nihai seçim main.py'de
+    gerçek yayın tarihine göre yapılıyor; ana sayfadaki sıra buna güvenilir bir
+    ölçüt değildi (öne çıkarılan eski haberler listenin üstünde durabiliyor).
+    Bu yüzden `adet`, rapora girecek haber sayısı değil, tarih sıralamasına
+    gönderilecek ADAY HAVUZUNUN büyüklüğüdür.
+    """
     system = (
-        "Sen bir haber editörüsün. Sana bir haber sitesinin ANA SAYFASINDAN toplanmış "
-        "başlık ve link ikilileri verilecek. Liste, haberlerin sayfada göründüğü "
-        "EDİTORYAL SIRAYLA gelir: en üstteki, sitenin o an en önemli gördüğü haberdir. "
-        "Aralarından yalnızca GERÇEK haberleri seç; alışveriş rehberi ('en iyi X'), ürün "
-        "incelemesi, kupon/indirim sayfası, canlı blog, podcast, video ve reklam gibi "
-        f"haber olmayan öğeleri ele. Eleme sonrası kalanların İLK {adet} tanesini, yani "
-        "listede en üstte kalanları, verilen linkleriyle birlikte döndür. Sırayı konu "
-        "ilgi çekiciliğine göre DEĞİŞTİRME — sayfadaki sırayı aynen koru. "
+        "Sen başarılı bir haber editörüsün. Sana bir haber sitesinin ANA SAYFASINDAN toplanmış "
+        "başlık ve link ikilileri verilecek. Görevin yalnızca AYIKLAMA yapmak: "
+        "aralarından GERÇEK haberleri seç, haber olmayanları ele. "
+        "Haber sayılmayanlar: alışveriş rehberi ('en iyi X'), ürün incelemesi, "
+        "kupon/indirim sayfası, canlı blog, podcast, video, etkinlik duyurusu, "
+        "bülten kaydı ve reklam.\n\n"
+        f"Elemeden geçen haberlerden EN FAZLA {adet} tanesini döndür. "
+        "Sıralama YAPMA ve önem değerlendirmesi yapma — hangi haberin rapora "
+        "gireceğine daha sonra yayın tarihine bakılarak karar verilecek.\n\n"
+        "ÖNEMLİ: Bu, haber olmayan öğelerin elendiği SON aşamadır. Sonraki "
+        "adımlar yalnızca yayın tarihine ve haberin yapay zeka ile ilgisine "
+        "bakar; bir öğenin haber olup olmadığını bir daha sorgulamaz. Bu yüzden "
+        "kararsız kaldığın öğeyi LİSTEDEN ÇIKAR. Şüpheli bir öğeyi listede "
+        "bırakmak, birkaç haber eksik döndürmekten daha kötüdür — çünkü o öğe "
+        "doğrudan nihai rapora girer.\n\n"
         "Linkleri aynen koru, değiştirme."
     )
     aday_metni = "\n".join(
@@ -95,9 +108,8 @@ _ICERIK_SEMASI = {
 def icerik_inceleyici_ajani(baslik: str, icerik: str) -> dict:
     """Bir makalenin içeriğine bakarak yapay zeka ile ilgili olup olmadığını döndürür."""
     system = (
-        "Sen bir teknoloji analistisin. Sana bir haberin başlığı ve gövde metni verilecek. "
-        "Haberin ASIL KONUSU yapay zeka mı (AI, makine öğrenimi, derin öğrenme, LLM, üretken "
-        "yapay zeka vb.), karar ver. Konunun yalnızca yan cümlede geçmesi yeterli değildir; "
+        "Sen çok yetenekli bir teknoloji analistisin. Sana bir haberin başlığı ve gövde metni "
+        "verilecek. Bu haberin bir YAPAY ZEKA HABERİ olup olmadığına karar ver.\n\n" 
         "haberin merkezinde olmalı. Gerekçeni kısa ve Türkçe yaz."
     )
     kullanici = f"BAŞLIK: {baslik}\n\nİÇERİK:\n{icerik}"
@@ -113,8 +125,16 @@ def rapor_hazirlayici_ajani(siniflandirmalar: list[dict]) -> str:
         "Sen çok yetenekli bir editörsün. Sana analiz edilmiş haberlerin listesi (başlık, link, "
         "yayın tarihi, yapay zeka ile ilgili mi, gerekçe) verilecek. Kısa, akıcı ve düzenli bir "
         "Türkçe rapor yaz: önce yapay zeka ile ilgili haberleri öne çıkar, sonra kısa bir genel "
-        "değerlendirme ekle. Haberin yayın tarihi doluysa belirt; 'tarih' alanı BOŞ ise tarihe "
-        "hiç değinme ve 'tarih bilinmiyor' gibi bir ifade de kullanma. Markdown kullanabilirsin."
+        "değerlendirme ekle. Markdown kullan.\n\n"
+        "KURALLAR:\n"
+        "1. HER haberin sonuna kaynak linkini Markdown biçiminde ekle: "
+        "[Habere git](LINK)\n"
+        "2. Linkleri sana verildiği gibi KARAKTER KARAKTER kopyala. Kısaltma, düzeltme, "
+        "tamamlama ya da tahmin yapma; listede olmayan bir link asla yazma.\n"
+        "3. Hiçbir haberi linksiz bırakma — genel değerlendirme bölümü hariç, "
+        "bahsettiğin her habere linki eşlik etmeli.\n"
+        "4. Haberin yayın tarihi doluysa belirt; 'tarih' alanı BOŞ ise tarihe hiç değinme "
+        "ve 'tarih bilinmiyor' gibi bir ifade de kullanma."
     )
     veri = json.dumps(siniflandirmalar, ensure_ascii=False, indent=2)
     response = _get_client().messages.create(

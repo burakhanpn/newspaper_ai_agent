@@ -137,6 +137,47 @@ def haber_icerigini_getir(link: str) -> dict:
 
 
 # ============================================================
+# Rapor linklerinin doğrulanması
+# ============================================================
+# Markdown link biçimi: [metin](https://...)
+MD_LINK_DESENI = re.compile(r"\[[^\]]*\]\((https?://[^\s)]+)\)")
+
+
+def raporu_linkleriyle_dogrula(rapor: str, sonuclar: list[dict]) -> tuple[str, list[str]]:
+    """Ajan 3'ün yazdığı rapordaki linkleri gerçek haber linkleriyle karşılaştırır.
+
+    Ajan 1'in linklerine güvenmediğimiz gibi (bkz. main.py'deki aday_dizini),
+    Ajan 3'ün yazdığı linklere de güvenmiyoruz: LLM bir URL'yi kısaltabilir,
+    bozabilir ya da tamamen uydurabilir. Burada iki şeyi garanti altına alıyoruz:
+
+      1. Raporda geçen her link gerçekten analiz edilen haberlere ait.
+      2. Hiçbir haber linksiz kalmıyor — eksik kalanlar "Kaynaklar" bölümüne eklenir.
+
+    Döner: (rapor, uyarilar). Ajan işini düzgün yaptıysa rapor değişmeden,
+    uyarı listesi de boş döner.
+    """
+    gecerli = {s["link"] for s in sonuclar}
+    bulunan = set(MD_LINK_DESENI.findall(rapor))
+    uyarilar = []
+
+    # 1) Uydurulmuş ya da bozulmuş linkler: rapordan silmiyoruz (metnin akışını
+    #    bozar), ama konsolda görünür kılıyoruz ki fark edilsin.
+    for url in sorted(bulunan - gecerli):
+        uyarilar.append(f"raporda tanınmayan link: {url}")
+
+    # 2) Rapora hiç girmemiş haberler için sonuna kaynak listesi ekle.
+    eksik = [s for s in sonuclar if s["link"] not in bulunan]
+    if eksik:
+        uyarilar.append(
+            f"{len(eksik)} haberin linki metne eklenmemiş; 'Kaynaklar' bölümü eklendi."
+        )
+        satirlar = "\n".join(f"- [{s['baslik']}]({s['link']})" for s in eksik)
+        rapor = f"{rapor.rstrip()}\n\n## 🔗 Kaynaklar\n\n{satirlar}\n"
+
+    return rapor, uyarilar
+
+
+# ============================================================
 # Tekrar kontrolü — daha önce raporlanmış haberleri hatırlar
 # ============================================================
 def gecmisi_yukle(dosya: str = GECMIS_DOSYASI) -> dict:
