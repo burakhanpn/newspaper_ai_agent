@@ -38,6 +38,8 @@ zeka sektörüne akan sermayenin büyüklüğünü gösteriyor. (11.08.2026 03:0
 
 ## Mimari
 
+Ayrıntılı diyagramlar ve tasarım gerekçeleri: [`docs/mimari.md`](docs/mimari.md)
+
 ```
 Ana sayfa HTML
       │
@@ -150,6 +152,20 @@ Ana sayfa scraping'i, RSS'e göre daha kırılgandır: site tasarımını deği�
 | `gunluk_rapor_calistir.bat` | Zamanlanmış çalışma zinciri (Windows) |
 | `gorevi_kur.ps1` | Task Scheduler görevini tek komutla kurar |
 | `ZAMANLAMA.md` | Otomatik çalıştırma kurulum rehberi |
+| `docs/mimari.md` | Mimari diyagramları ve tasarım gerekçeleri |
+| `tests/` | 59 test; ağ ve API anahtarı gerektirmez |
+
+## Testler
+
+```bash
+pip install -r requirements.txt -r requirements-dev.txt
+pytest
+```
+
+Testler scraping, LLM çağrıları ve SMTP bağlantısını taklit eder — internet
+erişimi ya da API anahtarı gerekmez. Kapsam: URL ayıklama kuralları, tarih
+ayrıştırma, tarihe göre seçim, çıkış kodları, rapor biçim/link doğrulama,
+tazelik kontrolü ve e-posta oluşturma.
 
 ## Çıkış kodları
 

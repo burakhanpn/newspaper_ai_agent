@@ -32,3 +32,6 @@ COMMIT_MSG.txt
 Thumbs.db
 desktop.ini
 .DS_Store
+
+# Kisisel calisma kurallari (repoya girmez)
+CLAUDE.md

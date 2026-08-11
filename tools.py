@@ -154,11 +154,16 @@ MD_LINK_DESENI = re.compile(r"\[[^\]]*\]\((https?://[^\s)]+)\)")
 # Kalıplar bilerek dar tutuldu: haber metninde doğal olarak geçebilecek
 # ifadeler (örneğin bir yasa haberinde "madde 4") tek başına tetiklemesin diye
 # EVET/HAYIR bağlamına demirlendi ve eşik iki AYRI sinyale ayarlandı.
+# Türkçe karakterler ASCII'ye düşmüş olabilir (log yönlendirmesi, kodlama
+# farkı, modelin kendi tercihi): "doğru" yerine "dogru" gelebilir. Kalıplar
+# her iki yazımı da kabul eder, aksi halde denetim sessizce körleşir.
+_YARGI = r"(do[ğg]ru|yanl[ıi][şs]|hatal[ıi])"
+
 _META_DESENLERI = [
     (re.compile(r"\b(EVET|HAYIR)\s*[-–—:]\s*\d"), "EVET-N / HAYIR-N atfı"),
     (re.compile(r"\b(EVET|HAYIR)\s*[-–—:]?\s*Madde", re.I), "madde numarasına atıf"),
-    (re.compile(r"\betiket(i|ler|leri)?\s+(doğru|yanlış|hatalı)", re.I), "etiket yargısı"),
-    (re.compile(r"sınıflandırma\w*\s+(\w+\s+)?(doğru|yanlış|hatalı)", re.I),
+    (re.compile(rf"\betiket(i|ler|leri)?\s+{_YARGI}", re.I), "etiket yargısı"),
+    (re.compile(rf"s[ıi]n[ıi]fland[ıi]rma\w*\s+(\w+\s+)?{_YARGI}", re.I),
      "sınıflandırma değerlendirmesi"),
     (re.compile(r"(\b(EVET|HAYIR)\b.*){3,}", re.S), "tekrarlayan EVET/HAYIR hükmü"),
 ]

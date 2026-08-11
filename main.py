@@ -227,6 +227,11 @@ def main():
     # sadece o günün linkleriyle üzerine yazılırdı.
     gecmise_ekle([h["link"] for h in haberler], gecmisi_yukle())
 
+    # Başarıyı da açıkça bildir. Fonksiyonun sonuna düşmek de 0 döndürürdü,
+    # ama o zaman çıkış kodu sözleşmesinin bir ucu kodda görünmez kalırdı:
+    # üç durumun üçü de aynı yerde, aynı biçimde ifade edilsin.
+    sys.exit(CIKIS_BASARILI)
+
 
 if __name__ == "__main__":
     main()

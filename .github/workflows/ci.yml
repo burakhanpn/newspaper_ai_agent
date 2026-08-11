@@ -1,0 +1,38 @@
+name: CI
+
+# Testler ag erisimi ve API anahtari GEREKTIRMEZ: scraping, LLM cagrilari ve
+# SMTP baglantisi testlerde taklit edilir. Bu yuzden CI'da sir tanimlamaya
+# gerek yoktur ve fork'lardan gelen PR'lar da calisir.
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.10", "3.12"]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Python ${{ matrix.python-version }} kurulumu
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+
+      - name: Bagimliliklari yukle
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt -r requirements-dev.txt
+
+      - name: Sozdizimi ve kullanilmayan isim denetimi
+        run: python -m pyflakes *.py tests/*.py
+
+      - name: Testler
+        run: python -m pytest tests/ -v
