@@ -140,9 +140,11 @@ def test_kimlik_dogrulama_hatasi_kod_bir_doner(rapor_dosyasi, sahte_smtp, monkey
     assert e.value.code == 1
 
 
-def test_ag_hatasi_ham_traceback_yerine_kod_bir_doner(rapor_dosyasi, sahte_smtp, monkeypatch):
+def test_kalici_ag_hatasi_kod_bir_doner(rapor_dosyasi, sahte_smtp, monkeypatch):
     """DNS cozulemedigi gercek bir vaka yasandi; ham traceback log'u okunmaz yapiyordu."""
     import socket
+
+    monkeypatch.setattr(send_report.time, "sleep", lambda s: None)
 
     class AgsizSMTP:
         def __init__(self, *a, **k):
@@ -151,3 +153,50 @@ def test_ag_hatasi_ham_traceback_yerine_kod_bir_doner(rapor_dosyasi, sahte_smtp,
     with pytest.raises(SystemExit) as e:
         send_report.raporu_gonder(str(rapor_dosyasi))
     assert e.value.code == 1
+
+
+# ============================================================
+# Gecici DNS hatasindan toparlanma
+# ============================================================
+def test_gecici_dns_hatasi_sonrasi_gonderim_basarili(rapor_dosyasi, sahte_smtp, monkeypatch):
+    """Gercek vaka (12.08.2026): main.py techcrunch'i cozdu, 14 sn sonra
+    smtp.gmail.com cozulemedi. Ana sayfanin gelmesi SMTP'nin calisacagini
+    garanti etmiyor; her isim aramasi ayri risk altinda."""
+    import socket
+    monkeypatch.setattr(send_report.time, "sleep", lambda s: None)
+
+    cagri = {"n": 0}
+    gercek_smtp = send_report.smtplib.SMTP
+
+    class BazenDusenSMTP:
+        def __init__(self, *a, **k):
+            cagri["n"] += 1
+            if cagri["n"] < 3:
+                raise socket.gaierror(11001, "getaddrinfo failed")
+            self._ic = gercek_smtp(*a, **k)
+        def __enter__(self): return self._ic.__enter__()
+        def __exit__(self, *a): return self._ic.__exit__(*a)
+
+    monkeypatch.setattr(send_report.smtplib, "SMTP", BazenDusenSMTP)
+    send_report.raporu_gonder(str(rapor_dosyasi))   # SystemExit atmamali
+    assert cagri["n"] == 3
+    assert "mesaj" in sahte_smtp
+
+
+def test_kimlik_hatasi_yeniden_denenmez(rapor_dosyasi, sahte_smtp, monkeypatch):
+    """Yanlis Uygulama Sifresi kalici bir hatadir; tekrar denemek anlamsiz."""
+    monkeypatch.setattr(send_report.time, "sleep", lambda s: None)
+    cagri = {"n": 0}
+
+    class RededenSMTP:
+        def __init__(self, *a, **k): cagri["n"] += 1
+        def __enter__(self): return self
+        def __exit__(self, *a): return False
+        def starttls(self): pass
+        def login(self, *a): raise smtplib.SMTPAuthenticationError(535, b"reddedildi")
+        def send_message(self, m): pass
+
+    monkeypatch.setattr(send_report.smtplib, "SMTP", RededenSMTP)
+    with pytest.raises(SystemExit):
+        send_report.raporu_gonder(str(rapor_dosyasi))
+    assert cagri["n"] == 1, "kimlik hatasi yeniden denenmemeli"

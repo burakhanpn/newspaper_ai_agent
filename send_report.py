@@ -20,6 +20,7 @@ import os
 import smtplib
 import socket
 import sys
+import time
 from datetime import datetime, timedelta
 from email.message import EmailMessage
 from pathlib import Path
@@ -37,6 +38,14 @@ for _akis in (sys.stdout, sys.stderr):
 
 SMTP_SUNUCU = "smtp.gmail.com"
 SMTP_PORT = 587
+
+# Gecici DNS/baglanti hatalarinda yeniden deneme. tools._dayanikli_get ile ayni
+# mantik, ayri gerekce: ana sayfanin cekilebilmis olmasi SMTP'nin de calisacagi
+# anlamina GELMIYOR. Gercek vaka (12.08.2026): main.py 09:28:54'te techcrunch'i
+# sorunsuz cozdu, 14 saniye sonra smtp.gmail.com "getaddrinfo failed" verdi.
+# Ayni sey 11.08 10:50'de de yasandi. Acilis sonrasi isim cozumlemesi bir sure
+# guvenilmez kaliyor ve her arama ayri ayri risk altinda.
+DENEME_BEKLEMELERI = (15, 45)
 
 # Rapor bu suredem eskiyse gonderilmez. main.py bir sebeple rapor.md'yi
 # guncelleyemediginde (site yapisi degisti, yeni haber yok, ag hatasi)
@@ -98,25 +107,34 @@ def raporu_gonder(dosya_yolu: str, zorla: bool = False) -> None:
         filename=yol.name,
     )
 
-    try:
-        with smtplib.SMTP(SMTP_SUNUCU, SMTP_PORT, timeout=30) as sunucu:
-            sunucu.starttls()
-            sunucu.login(gonderen, uygulama_sifresi)
-            sunucu.send_message(msg)
-    except smtplib.SMTPAuthenticationError:
-        print(
-            "HATA: Gmail girisi reddedildi. GMAIL_APP_PASSWORD gecerli bir "
-            "Uygulama Sifresi olmali (normal hesap sifresi calismaz) ve "
-            "hesapta 2 Adimli Dogrulama acik olmali.\n"
-            "https://myaccount.google.com/apppasswords"
-        )
-        sys.exit(1)
-    except (socket.gaierror, OSError) as e:
-        print(f"HATA: SMTP sunucusuna baglanilamadi ({SMTP_SUNUCU}:{SMTP_PORT}): {e}")
-        sys.exit(1)
-    except smtplib.SMTPException as e:
-        print(f"HATA: E-posta gonderilemedi: {e}")
-        sys.exit(1)
+    for deneme, bekleme in enumerate([*DENEME_BEKLEMELERI, None]):
+        try:
+            with smtplib.SMTP(SMTP_SUNUCU, SMTP_PORT, timeout=30) as sunucu:
+                sunucu.starttls()
+                sunucu.login(gonderen, uygulama_sifresi)
+                sunucu.send_message(msg)
+            break
+        except smtplib.SMTPAuthenticationError:
+            # Kalici hata: yeniden denemek yalnizca zaman kaybettirir.
+            print(
+                "HATA: Gmail girisi reddedildi. GMAIL_APP_PASSWORD gecerli bir "
+                "Uygulama Sifresi olmali (normal hesap sifresi calismaz) ve "
+                "hesapta 2 Adimli Dogrulama acik olmali.\n"
+                "https://myaccount.google.com/apppasswords"
+            )
+            sys.exit(1)
+        except smtplib.SMTPException as e:
+            print(f"HATA: E-posta gonderilemedi: {e}")
+            sys.exit(1)
+        except (socket.gaierror, OSError) as e:
+            # Gecici olabilir: DNS henuz hazir degil ya da baglanti kurulamadi.
+            if bekleme is None:
+                print(f"HATA: SMTP sunucusuna baglanilamadi "
+                      f"({SMTP_SUNUCU}:{SMTP_PORT}): {e}")
+                sys.exit(1)
+            print(f"      SMTP sunucusuna erisilemedi; {bekleme} sn sonra yeniden "
+                  f"denenecek ({deneme + 1}/{len(DENEME_BEKLEMELERI) + 1})...")
+            time.sleep(bekleme)
 
     print(f"Rapor '{alici}' adresine gonderildi.")
 
