@@ -1,5 +1,6 @@
 import json
 import re
+import time
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from urllib.parse import urljoin, urlparse
@@ -8,6 +9,33 @@ import requests
 from bs4 import BeautifulSoup
 
 HEADERS = {'User-Agent': 'Mozilla/5.0'}
+
+# ---- Geçici ağ hatalarına karşı yeniden deneme ----
+# Zamanlanmış görev, bilgisayar açılır açılmaz çalışabilir (StartWhenAvailable).
+# O anda Windows hazırdır ama ağ yığını henüz değildir; DNS çözümlemesi
+# "getaddrinfo failed" ile döner. Gerçek vaka: 12.08.2026 09:17 — görev 09:00
+# tetikleyicisinin telafisi olarak açılıştan hemen sonra çalıştı ve düştü.
+# Tek denemede pes etmek, o gün hiç rapor gelmemesi demek.
+DENEME_BEKLEMELERI = (15, 45)  # saniye; ilk denemeden sonraki bekleme süreleri
+
+
+def _dayanikli_get(url: str, **kwargs):
+    """requests.get; geçici bağlantı/DNS hatalarında artan aralıklarla yeniden dener.
+
+    Yalnızca `ConnectionError` yakalanır — DNS çözümlenememesi ve bağlantı
+    kurulamaması bu sınıfa girer. HTTP 403/404 gibi yanıtlar yeniden denenmez:
+    onlar geçici değil, kalıcı sorunlardır ve tekrar denemek yalnızca zaman
+    kaybettirir.
+    """
+    for deneme, bekleme in enumerate([*DENEME_BEKLEMELERI, None]):
+        try:
+            return requests.get(url, **kwargs)
+        except requests.exceptions.ConnectionError:
+            if bekleme is None:
+                raise
+            print(f"      Ağa erişilemedi; {bekleme} sn sonra yeniden denenecek "
+                  f"({deneme + 1}/{len(DENEME_BEKLEMELERI) + 1})...")
+            time.sleep(bekleme)
 
 # Makale linklerini menü, etiket ve bölüm linklerinden ayırmak için.
 # Ya yolda 4+ haneli bir kimlik vardır (/news/799431/...), ya da yolun sonunda
@@ -35,7 +63,10 @@ def haber_adaylarini_getir(anasayfa_url: str, limit: int = 25) -> list[dict]:
 
     Menü/reklam ayıklamasını Ajan 1 (LLM) yapacağı için bilerek fazla aday bırakılır.
     """
-    response = requests.get(anasayfa_url, headers=HEADERS, timeout=10)
+    # Ana sayfa çekilemezse tüm çalışma düşer; bu yüzden dayanıklı istek.
+    # Makale sayfaları için gerekmez: ana sayfa geldiyse ağ zaten ayaktadır
+    # ve tek bir makalenin düşmesi çalışmayı durdurmaz.
+    response = _dayanikli_get(anasayfa_url, headers=HEADERS, timeout=10)
     response.raise_for_status()
     soup = BeautifulSoup(response.text, 'html.parser')
 
