@@ -16,12 +16,14 @@ for _akis in (sys.stdout, sys.stderr):
 from tools import (
     haber_adaylarini_getir,
     haber_icerigini_getir,
+    icerik_gecerli_mi,
     raporu_bicim_dogrula,
     raporu_linkleriyle_dogrula,
     gecmisi_yukle,
     gecmise_ekle,
 )
 from agent import (
+    AjanHatasi,
     baslik_okuyucu_ajani,
     icerik_inceleyici_ajani,
     rapor_hazirlayici_ajani,
@@ -72,11 +74,26 @@ def _sayfayi_cek(haber: dict) -> dict:
 
 
 def _siniflandir(haber: dict) -> dict:
-    """İçeriği çekilmiş bir haberi İçerik İnceleyici Ajanı ile sınıflandırır."""
-    karar = icerik_inceleyici_ajani(haber["baslik"], haber["icerik"])
-    # Tarih bulunamamış olabilir; bu bir hata değil, sadece bilgi eksikliğidir.
-    etiket = f"[{haber['tarih']}] " if haber["tarih"] else ""
-    print(f"      ✓ {etiket}{haber['baslik'][:55]}")
+    """İçeriği çekilmiş bir haberi İçerik İnceleyici Ajanı ile sınıflandırır.
+
+    Sayfası çekilemeyen haber ajana HİÇ gönderilmez: tools.py böyle durumlarda
+    `icerik` alanına bir yer tutucu koyuyor ve model onu makale gövdesi sanıp
+    uydurma bir gerekçeyle "AI ile ilgili değil" diye etiketliyordu — oysa
+    gerçek sebep içeriğin hiç okunamamış olması. Üstelik ücretli bir ajan
+    çağrısı da boşa gidiyordu.
+    """
+    if not icerik_gecerli_mi(haber["icerik"]):
+        print(f"      ! {haber['baslik'][:55]} — içerik çekilemedi, "
+              "sınıflandırma atlandı")
+        karar = {
+            "ai_ile_ilgili": False,
+            "aciklama": "Sayfa içeriği çekilemediği için sınıflandırma yapılamadı.",
+        }
+    else:
+        karar = icerik_inceleyici_ajani(haber["baslik"], haber["icerik"])
+        # Tarih bulunamamış olabilir; bu bir hata değil, sadece bilgi eksikliğidir.
+        etiket = f"[{haber['tarih']}] " if haber["tarih"] else ""
+        print(f"      ✓ {etiket}{haber['baslik'][:55]}")
     return {
         "baslik": haber["baslik"],
         "link": haber["link"],
@@ -117,7 +134,13 @@ def main():
 
     # 1. Ajan 1 — haber olmayanları ele, tarih sıralamasına girecek havuzu oluştur
     print("[2/5] Başlık Okuyucu Ajanı haber olmayanları eliyor...")
-    secilenler = baslik_okuyucu_ajani(adaylar, adet=ADAY_HAVUZU)
+    # AjanHatasi yakalanmazsa çalışma yakalanmamış bir traceback ile düşer ve
+    # çıkış kodu 1 yerine 1 olsa bile sebep loga anlaşılır biçimde yazılmaz.
+    try:
+        secilenler = baslik_okuyucu_ajani(adaylar, adet=ADAY_HAVUZU)
+    except AjanHatasi as e:
+        print(f"HATA: {e}")
+        sys.exit(CIKIS_HATA)
 
     # Ajanın döndürdüğü linke güvenmiyoruz: link üzerinden asıl aday kaydını
     # buluyoruz. Böylece uydurulmuş ya da bozulmuş bir link listeye giremez.
@@ -160,8 +183,14 @@ def main():
     # Pahalı olan LLM çağrısı; havuzun tamamı için değil, rapora girecekler
     # için yapılır.
     print(f"[4/5] İçerik İnceleyici Ajanı {len(haberler)} haberi paralel analiz ediyor...")
-    with ThreadPoolExecutor(max_workers=min(5, len(haberler))) as executor:
-        sonuclar = list(executor.map(_siniflandir, haberler))
+    # executor.map'in fırlattığı istisna sonuç listelenirken yükselir; bu yüzden
+    # list() çağrısı da try içinde.
+    try:
+        with ThreadPoolExecutor(max_workers=min(5, len(haberler))) as executor:
+            sonuclar = list(executor.map(_siniflandir, haberler))
+    except AjanHatasi as e:
+        print(f"HATA: {e}")
+        sys.exit(CIKIS_HATA)
 
     # Ham datetime'ları ayır: Ajan 3'e JSON olarak gidemezler ve orada işe
     # yaramazlar. Alt bilgideki tarih aralığını bunlarla hesaplıyoruz.
@@ -169,7 +198,15 @@ def main():
 
     # 3. Ajan 3 — nihai raporu yaz
     print("\n[5/5] Rapor Hazırlayıcı Ajanı raporu yazıyor...\n")
-    rapor = rapor_hazirlayici_ajani(sonuclar)
+    # Kesik/reddedilmiş yanıt burada durur. Eskiden kesik bir rapor biçim
+    # denetimini geçip rapor.md'ye yazılıyor, send_report.py yalnızca dosyanın
+    # zaman damgasına baktığı için e-postalanıyordu.
+    try:
+        rapor = rapor_hazirlayici_ajani(sonuclar)
+    except AjanHatasi as e:
+        print(f"HATA: {e}")
+        print("       Rapor kaydedilmedi, e-posta gönderilmeyecek.")
+        sys.exit(CIKIS_HATA)
 
     # Ajan 3 gerçekten HABER RAPORU mu yazdı? Bu denetim link tamamlamasından
     # ÖNCE gelmeli: raporu_linkleriyle_dogrula() eksik linkleri ekleyerek
