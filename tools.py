@@ -133,6 +133,20 @@ def _yayin_tarihi_bul(soup):
     return tarih
 
 
+# Sayfa çekilemediğinde YA DA ayrıştırılamadığında `icerik` alanına konan yer
+# tutucular bu önekle başlar. İki ayrı yol var (ağ hatası ve "sayfa yapısı
+# tanınamadı") ve ikisi de gerçek gövde metni DEĞİLDİR: yer tutucuyu makale
+# sanan model uydurma bir gerekçe üretip haberi "AI ile ilgili değil" diye
+# etiketler, üstelik bir ajan çağrısı da boşa gider. Öneki tek yerde tutuyoruz
+# ki iki yol da aynı denetime takılsın.
+ICERIK_HATA_ONEKI = "[İçerik"
+
+
+def icerik_gecerli_mi(icerik: str) -> bool:
+    """Çekilen metin gerçek bir makale gövdesi mi, yoksa yer tutucu mu?"""
+    return bool(icerik) and not icerik.startswith(ICERIK_HATA_ONEKI)
+
+
 def haber_icerigini_getir(link: str) -> dict:
     """Makalenin gövde metnini ve yayın tarihini TEK istekte çeker.
 
@@ -159,12 +173,12 @@ def haber_icerigini_getir(link: str) -> dict:
 
         return {
             # İlk ~4000 karakter sınıflandırma için genelde yeterli.
-            "icerik": metin[:4000] or "[İçerik alınamadı — sayfa yapısı tanınamadı]",
+            "icerik": metin[:4000] or f"{ICERIK_HATA_ONEKI} alınamadı — sayfa yapısı tanınamadı]",
             "tarih": yayin.astimezone().strftime("%d.%m.%Y %H:%M") if yayin else "",
             "_yayin": yayin,
         }
     except Exception as e:
-        return {"icerik": f"[İçerik çekilemedi: {e}]", "tarih": "", "_yayin": None}
+        return {"icerik": f"{ICERIK_HATA_ONEKI} çekilemedi: {e}]", "tarih": "", "_yayin": None}
 
 
 # ============================================================
